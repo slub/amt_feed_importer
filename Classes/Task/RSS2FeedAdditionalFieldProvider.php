@@ -1,5 +1,4 @@
 <?php 
-namespace AMT\AmtFeedImporter\Task;
 
 /***************************************************************
  *
@@ -26,17 +25,25 @@ namespace AMT\AmtFeedImporter\Task;
  *  This copyright notice MUST APPEAR in all copies of the script!
  ***************************************************************/
 
-use \TYPO3\CMS\Core\Utility\GeneralUtility;
-use \TYPO3\CMS\Core\Messaging\FlashMessage;
+namespace AMT\AmtFeedImporter\Task;
 
-class RSS2FeedAdditionalFieldProvider extends \AMT\AmtFeedImporter\Task\AbstractFeedAdditionalFieldProvider {
+use TYPO3\CMS\Core\Utility\GeneralUtility;
+use TYPO3\CMS\Core\Utility\MathUtility;
+use TYPO3\CMS\Core\Messaging\FlashMessage;
+use TYPO3\CMS\Core\Messaging\FlashMessageService;
+use TYPO3\CMS\Scheduler\Task\AbstractTask;
+use AMT\AmtFeedImporter\Task\AbstractFeedAdditionalFieldProvider;
+use AMT\AmtFeedImporter\Task\RSS2ImportTask;
+use AMT\AmtFeedImporter\Service\FeedService;
+
+class RSS2FeedAdditionalFieldProvider extends AbstractFeedAdditionalFieldProvider {
 	private static $FEED_IMPORT_TYPE = 0;
 	private static $ADDITIONAL_FIELD_NAME = 'amtfeedimporter_feed_rss2_config';
 	
 	/**
-	 * @var \TYPO3\CMS\Extbase\Object\ObjectManager
+	 * @var FeedService
 	 */
-	protected $objectManager = NULL;
+	protected $feedService = NULL;
 	
 	/**
 	 * @var \AMT\AmtFeedImporter\Domain\Repository\FeedRepository
@@ -46,7 +53,7 @@ class RSS2FeedAdditionalFieldProvider extends \AMT\AmtFeedImporter\Task\Abstract
 	/**
 	 * Check if task is instance of RSS2ImportTask
 	 * 
-	 * @param \AMT\AmtFeedImporter\Task\RSS2ImportTask $task
+	 * @param RSS2ImportTask $task
 	 * @return void
 	 * @throws \InvalidArgumentException
 	 */
@@ -59,16 +66,14 @@ class RSS2FeedAdditionalFieldProvider extends \AMT\AmtFeedImporter\Task\Abstract
 	/**
 	 * Get all feed configurations for RSS2 type
 	 * 
-	 * @param \AMT\AmtFeedImporter\Task\RSS2ImportTask $task
+	 * @param RSS2ImportTask $task
 	 * @return array Array with configuration for additional field
 	 */
 	protected function getFeedsField($task = NULL) {
-		if ($this->objectManager === NULL) {
-			$this->objectManager = GeneralUtility::makeInstance(\TYPO3\CMS\Extbase\Object\ObjectManager::class);
-		}
+
 		
 		if ($this->feedRepository === NULL) {
-			$this->feedRepository = $this->objectManager->get(\AMT\AmtFeedImporter\Domain\Repository\FeedRepository::class);
+			$this->feedRepository = $this->getFeedService()->getFeedRepository();
 		}
 		
 		$feeds = $this->feedRepository->findByType(self::$FEED_IMPORT_TYPE);
@@ -108,27 +113,25 @@ class RSS2FeedAdditionalFieldProvider extends \AMT\AmtFeedImporter\Task\Abstract
 	}
 	
 	/**
-	 * @see \AMT\AmtFeedImporter\Task\AbstractFeedAdditionalFieldProvider::fieldValidation()
+	 * @see AbstractFeedAdditionalFieldProvider::fieldValidation()
 	 */
 	protected function fieldValidation($submittedData) {
-		if (\TYPO3\CMS\Core\Utility\MathUtility::canBeInterpretedAsInteger($submittedData[self::$ADDITIONAL_FIELD_NAME])) {
-			if ($this->objectManager === NULL) {
-				$this->objectManager = GeneralUtility::makeInstance(\TYPO3\CMS\Extbase\Object\ObjectManager::class);
-			}
+		if (MathUtility::canBeInterpretedAsInteger($submittedData[self::$ADDITIONAL_FIELD_NAME])) {
+
 		
 			if ($this->feedRepository === NULL) {
-				$this->feedRepository = $this->objectManager->get(\AMT\AmtFeedImporter\Domain\Repository\FeedRepository::class);
+				$this->feedRepository = $this->getFeedService()->getFeedRepository();
 			}
 		
 			$feed = $this->feedRepository->findByUid($submittedData[self::$ADDITIONAL_FIELD_NAME]);
 
-			/** @var \TYPO3\CMS\Core\Messaging\FlashMessageService $flashMessageService */
-			$flashMessageService = GeneralUtility::makeInstance(\TYPO3\CMS\Core\Messaging\FlashMessageService::class);
+			/** @var FlashMessageService $flashMessageService */
+			$flashMessageService = GeneralUtility::makeInstance(FlashMessageService::class);
 
 			$messageQueue = $flashMessageService->getMessageQueueByIdentifier();
 		
 			if ($feed === NULL) {
-                /** @var \TYPO3\CMS\Core\Messaging\FlashMessage $flashMessage */
+                /** @var FlashMessage $flashMessage */
 				$flashMessage = GeneralUtility::makeInstance(FlashMessage::class,
 						'',
 						$GLOBALS['LANG']->sL('LLL:EXT:amt_feed_importer/Resources/Private/Language/locallang.xlf:amt_feed_importer.errors.not_exist'),
@@ -139,7 +142,7 @@ class RSS2FeedAdditionalFieldProvider extends \AMT\AmtFeedImporter\Task\Abstract
 				
 				return FALSE;
 			} elseif ($feed->getType() !== self::$FEED_IMPORT_TYPE) {
-                /** @var \TYPO3\CMS\Core\Messaging\FlashMessage $flashMessage */
+                /** @var \FlashMessage $flashMessage */
 				$flashMessage = GeneralUtility::makeInstance(FlashMessage::class,
 						'',
 						$GLOBALS['LANG']->sL('LLL:EXT:amt_feed_importer/Resources/Private/Language/locallang.xlf:amt_feed_importer.errors.rss2.wrong_type'),
@@ -158,11 +161,24 @@ class RSS2FeedAdditionalFieldProvider extends \AMT\AmtFeedImporter\Task\Abstract
 	}
 	
 	/**
-	 * @see \AMT\AmtFeedImporter\Task\AbstractFeedAdditionalFieldProvider::saveAdditionalFields()
+	 * @see AbstractFeedAdditionalFieldProvider::saveAdditionalFields()
 	 */
-	public function saveAdditionalFields(array $submittedData, \TYPO3\CMS\Scheduler\Task\AbstractTask $task) {
+	public function saveAdditionalFields(array $submittedData, AbstractTask $task) {
 		parent::saveAdditionalFields($submittedData, $task);
 		
 		$task->feedUid = (int) $submittedData[self::$ADDITIONAL_FIELD_NAME];
+	}
+
+	/**
+	 * Get service with Dependency Injection
+	 *
+	 * @return FeedService
+	 */
+	protected function getFeedService() {
+		if ($this->feedService === NULL) {
+			$this->feedService = GeneralUtility::makeInstance(FeedService::class);
+		}
+
+		return $this->feedService;
 	}
 }

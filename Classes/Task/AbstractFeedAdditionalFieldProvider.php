@@ -1,5 +1,4 @@
 <?php 
-namespace AMT\AmtFeedImporter\Task;
 
 /***************************************************************
  *
@@ -25,17 +24,20 @@ namespace AMT\AmtFeedImporter\Task;
  *
  *  This copyright notice MUST APPEAR in all copies of the script!
  ***************************************************************/
-use \TYPO3\CMS\Scheduler as Scheduler;
+namespace AMT\AmtFeedImporter\Task;
 
-abstract class AbstractFeedAdditionalFieldProvider implements Scheduler\AdditionalFieldProviderInterface {
+use TYPO3\CMS\Scheduler\AdditionalFieldProviderInterface;
+use TYPO3\CMS\Scheduler\Controller\SchedulerModuleController;
+use TYPO3\CMS\Scheduler\Task\AbstractTask;
+
+abstract class AbstractFeedAdditionalFieldProvider implements AdditionalFieldProviderInterface {
 	/**
 	 * @param array $taskInfo reference to array with information about provided task
 	 * @param object $task
-	 * @param \TYPO3\CMS\Scheduler\Controller\SchedulerModuleController $schedulerModule reference to the Scheduler BE module
+	 * @param SchedulerModuleController $schedulerModule reference to the Scheduler BE module
 	 * @return array Array containing information about additional fields
 	 */
-	public function getAdditionalFields(array &$taskInfo, $task,
-										Scheduler\Controller\SchedulerModuleController $schedulerModule) {
+	public function getAdditionalFields(array &$taskInfo, $task, SchedulerModuleController $schedulerModule) {
 		$this->checkIfInstanceOf($task);
 		
 		return $this->getFeedsField($task);
@@ -43,20 +45,19 @@ abstract class AbstractFeedAdditionalFieldProvider implements Scheduler\Addition
 	
 	/** 
 	 * @param array $submittedData reference to array with data provided by the user
-	 * @param \TYPO3\CMS\Scheduler\Controller\SchedulerModuleController $schedulerModule reference to the Scheduler BE module
+	 * @param SchedulerModuleController $schedulerModule reference to the Scheduler BE module
 	 * @return boolean validation result
 	 */
-	public function validateAdditionalFields(array &$submittedData,
-											 Scheduler\Controller\SchedulerModuleController $schedulerModule) {
+	public function validateAdditionalFields(array &$submittedData, SchedulerModuleController $schedulerModule) {
 		return $this->fieldValidation($submittedData);
 	}
 	
 	/**
 	 * @param array $submittedData array with data provided by the user
-	 * @param \TYPO3\CMS\Scheduler\Task\AbstractTask $task current task
+	 * @param AbstractTask $task current task
 	 * @return void
 	 */
-	public function saveAdditionalFields(array $submittedData, Scheduler\Task\AbstractTask $task) {
+	public function saveAdditionalFields(array $submittedData, AbstractTask $task) {
 		$this->checkIfInstanceOf($task);
 	}
 

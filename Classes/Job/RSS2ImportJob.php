@@ -1,5 +1,4 @@
 <?php
-namespace AMT\AmtFeedImporter\Job;
 
 /***************************************************************
  *
@@ -26,22 +25,25 @@ namespace AMT\AmtFeedImporter\Job;
  *  This copyright notice MUST APPEAR in all copies of the script!
  ***************************************************************/
 
+namespace AMT\AmtFeedImporter\Job;
+
 use TYPO3\CMS\Core\Database\ConnectionPool;
-use \TYPO3\CMS\Core\Utility\GeneralUtility;
+use TYPO3\CMS\Core\Utility\GeneralUtility;
+use TYPO3\CMS\Core\DataHandling\DataHandler;
+use TYPO3\CMS\Core\TypoScript\Parser\TypoScriptParser;
+use TYPO3\CMS\Extbase\Service\CacheService;
+use AMT\AmtFeedImporter\Job\FeedImportJobInterface;
+use AMT\AmtFeedImporter\Domain\Repository\FeedRepository;
 
-class RSS2ImportJob implements \AMT\AmtFeedImporter\Job\FeedImportJobInterface {
-	/**
-	 * @var \TYPO3\CMS\Extbase\Object\ObjectManager
-	 */
-	protected $objectManager = NULL;
+class RSS2ImportJob implements FeedImportJobInterface {
 
 	/**
-	 * @var \AMT\AmtFeedImporter\Domain\Repository\FeedRepository
+	 * @var FeedRepository
 	 */
 	protected $feedRepository = NULL;
 
 	/**
-	 * @var \TYPO3\CMS\Extbase\Service\CacheService
+	 * @var CacheService
 	 */
 	protected $cacheService = NULL;
 
@@ -51,16 +53,18 @@ class RSS2ImportJob implements \AMT\AmtFeedImporter\Job\FeedImportJobInterface {
 	protected $feed = NULL;
 
 	/**
-	 * @see \AMT\AmtFeedImporter\Job\FeedImportJobInterface::run()
+	 * @param FeedRepository $feedRepository
+	 * @param CacheService $cacheService
+	 */
+	public function __construct(FeedRepository $feedRepository, CacheService $cacheService) {
+		$this->feedRepository = $feedRepository;
+		$this->cacheService = $cacheService;
+	}
+	
+	/**
+	 * @see FeedImportJobInterface::run()
 	 */
 	public function run($feedUid) {
-		if ($this->objectManager === NULL) {
-			$this->objectManager = GeneralUtility::makeInstance(\TYPO3\CMS\Extbase\Object\ObjectManager::class);
-		}
-
-		if ($this->feedRepository === NULL) {
-			$this->feedRepository = $this->objectManager->get(\AMT\AmtFeedImporter\Domain\Repository\FeedRepository::class);
-		}
 
 		if ((int) $feedUid <= 0) {
 			return FALSE;
@@ -155,8 +159,8 @@ class RSS2ImportJob implements \AMT\AmtFeedImporter\Job\FeedImportJobInterface {
 				}
 			}
 
-			/* @var $dataHandler \TYPO3\CMS\Core\DataHandling\DataHandler */
-			$dataHandler = GeneralUtility::makeInstance(\TYPO3\CMS\Core\DataHandling\DataHandler::class);
+			/* @var $dataHandler DataHandler */
+			$dataHandler = GeneralUtility::makeInstance(DataHandler::class);
 
 			$data = array();
 
@@ -191,9 +195,6 @@ class RSS2ImportJob implements \AMT\AmtFeedImporter\Job\FeedImportJobInterface {
 		}
 
 		if (count($newsArray) > 0) {
-			if ($this->cacheService === NULL) {
-				$this->cacheService = $this->objectManager->get(\TYPO3\CMS\Extbase\Service\CacheService::class);
-			}
 
 			$this->cacheService->clearPageCache($this->feed->getTargetFolder());
 		}
@@ -202,7 +203,7 @@ class RSS2ImportJob implements \AMT\AmtFeedImporter\Job\FeedImportJobInterface {
 	}
 
 	/**
-	 * @see \AMT\AmtFeedImporter\Job\FeedImportJobInterface::parseContent()
+	 * @see FeedImportJobInterface::parseContent()
 	 */
 	public function parseContent($feedUrl) {
 		$content = FALSE;
@@ -255,8 +256,8 @@ class RSS2ImportJob implements \AMT\AmtFeedImporter\Job\FeedImportJobInterface {
 					$thisParsedNews = &$parsedNews[count($parsedNews) - 1];
 					$thisParsedNews['customMapping'] = array();
 
-					/* @var $typoScriptParser \TYPO3\CMS\Core\TypoScript\Parser\TypoScriptParser */
-					$typoScriptParser = GeneralUtility::makeInstance(\TYPO3\CMS\Core\TypoScript\Parser\TypoScriptParser::class);
+					/* @var $typoScriptParser TypoScriptParser */
+					$typoScriptParser = GeneralUtility::makeInstance(TypoScriptParser::class);
 					$typoScriptParser->parse($this->feed->getCustomMapping());
 
 					$customMappingConfiguration = $typoScriptParser->setup;

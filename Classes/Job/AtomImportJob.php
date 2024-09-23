@@ -1,5 +1,4 @@
 <?php
-namespace AMT\AmtFeedImporter\Job;
 
 /***************************************************************
  *
@@ -25,23 +24,25 @@ namespace AMT\AmtFeedImporter\Job;
  *
  *  This copyright notice MUST APPEAR in all copies of the script!
  ***************************************************************/
+namespace AMT\AmtFeedImporter\Job;
 
 use TYPO3\CMS\Core\Database\ConnectionPool;
-use \TYPO3\CMS\Core\Utility\GeneralUtility;
+use TYPO3\CMS\Core\Utility\GeneralUtility;
+use TYPO3\CMS\Core\DataHandling\DataHandler;
+use TYPO3\CMS\Core\TypoScript\Parser\TypoScriptParser;
+use TYPO3\CMS\Extbase\Service\CacheService;
+use AMT\AmtFeedImporter\Job\FeedImportJobInterface;
+use AMT\AmtFeedImporter\Domain\Repository\FeedRepository;
 
-class AtomImportJob implements \AMT\AmtFeedImporter\Job\FeedImportJobInterface {
-	/**
-	 * @var \TYPO3\CMS\Extbase\Object\ObjectManager
-	 */
-	protected $objectManager = NULL;
+class AtomImportJob implements FeedImportJobInterface {
 
 	/**
-	 * @var \AMT\AmtFeedImporter\Domain\Repository\FeedRepository
+	 * @var FeedRepository
 	 */
 	protected $feedRepository = NULL;
 
 	/**
-	 * @var \TYPO3\CMS\Extbase\Service\CacheService
+	 * @var CacheService
 	 */
 	protected $cacheService = NULL;
 
@@ -51,16 +52,18 @@ class AtomImportJob implements \AMT\AmtFeedImporter\Job\FeedImportJobInterface {
 	protected $feed = NULL;
 
 	/**
-	 * @see \AMT\AmtFeedImporter\Job\FeedImportJobInterface::run()
+	 * @param FeedRepository $feedRepository
+	 * @param CacheService $cacheService
+	 */
+	public function __construct(FeedRepository $feedRepository, CacheService $cacheService) {
+		$this->feedRepository = $feedRepository;
+		$this->cacheService = $cacheService;
+	}
+
+	/**
+	 * @see FeedImportJobInterface::run()
 	 */
 	public function run($feedUid) {
-		if ($this->objectManager === NULL) {
-			$this->objectManager = GeneralUtility::makeInstance(\TYPO3\CMS\Extbase\Object\ObjectManager::class);
-		}
-
-		if ($this->feedRepository === NULL) {
-			$this->feedRepository = $this->objectManager->get(\AMT\AmtFeedImporter\Domain\Repository\FeedRepository::class);
-		}
 
 		if ((int) $feedUid <= 0) {
 			return FALSE;
@@ -169,8 +172,8 @@ class AtomImportJob implements \AMT\AmtFeedImporter\Job\FeedImportJobInterface {
 				}
 			}
 
-			/* @var $dataHandler \TYPO3\CMS\Core\DataHandling\DataHandler */
-			$dataHandler = GeneralUtility::makeInstance(\TYPO3\CMS\Core\DataHandling\DataHandler::class);
+			/* @var $dataHandler DataHandler */
+			$dataHandler = GeneralUtility::makeInstance(DataHandler::class);
 
 			$data = array();
 
@@ -205,10 +208,6 @@ class AtomImportJob implements \AMT\AmtFeedImporter\Job\FeedImportJobInterface {
 		}
 
 		if (count($newsArray) > 0) {
-			if ($this->cacheService === NULL) {
-				$this->cacheService = $this->objectManager->get(\TYPO3\CMS\Extbase\Service\CacheService::class);
-			}
-
 			$this->cacheService->clearPageCache($this->feed->getTargetFolder());
 		}
 
@@ -216,7 +215,7 @@ class AtomImportJob implements \AMT\AmtFeedImporter\Job\FeedImportJobInterface {
 	}
 
 	/**
-	 * @see \AMT\AmtFeedImporter\Job\FeedImportJobInterface::parseContent()
+	 * @see FeedImportJobInterface::parseContent()
 	 */
 	public function parseContent($feedUrl) {
 		$content = FALSE;
@@ -242,93 +241,92 @@ class AtomImportJob implements \AMT\AmtFeedImporter\Job\FeedImportJobInterface {
 		if ($content === FALSE) {
 			return NULL;
 		} else {
-			if ($this->cacheService === NULL) {
-				$xmlObject = new \SimpleXMLElement($content);
 
-				if ($xmlObject->getName() !== 'feed') {
-					GeneralUtility::devLog('This is not Atom standard', 'amt_feed_importer', 3);
+			$xmlObject = new \SimpleXMLElement($content);
 
-					return FALSE;
+			if ($xmlObject->getName() !== 'feed') {
+				GeneralUtility::devLog('This is not Atom standard', 'amt_feed_importer', 3);
+
+				return FALSE;
+			}
+
+			$parsedNews = array();
+
+			foreach ($xmlObject->entry as $entry) {
+				$linkValue = '';
+
+				foreach ($entry->link as $link) {
+					$linkAttributes = (array) $link->attributes();
+
+					if ((isset($linkAttributes['@attributes']['rel']) && $linkAttributes['@attributes']['rel'] == 'alternate') ||
+						!isset($linkAttributes['@attributes']['rel'])) {
+						$linkValue = $linkAttributes['@attributes']['href'];
+
+						break;
+					}
 				}
 
-				$parsedNews = array();
+				$dateTime = \DateTime::createFromFormat(\DateTime::ATOM, $entry->published);
 
-				foreach ($xmlObject->entry as $entry) {
-					$linkValue = '';
+				$parsedNews[] = array(
+					'amt_feedimporter_guid' => (string) $entry->id,
+					'datetime' => $dateTime === FALSE ? new \DateTime() : $dateTime,
+					'title' => (string) $entry->title,
+					'link' => $linkValue,
+					'author' => (string) $entry->author->name,
+					'author_email' => (string) $entry->author->email,
+					'teaser' => (string) $entry->summary,
+					'bodytext' => (string) $entry->content,
+				);
 
-					foreach ($entry->link as $link) {
-						$linkAttributes = (array) $link->attributes();
+				if ($this->feed->getCustomMapping() !== '') {
+					$thisParsedNews = &$parsedNews[count($parsedNews) - 1];
+					$thisParsedNews['customMapping'] = array();
 
-						if ((isset($linkAttributes['@attributes']['rel']) && $linkAttributes['@attributes']['rel'] == 'alternate') ||
-                            !isset($linkAttributes['@attributes']['rel'])) {
-							$linkValue = $linkAttributes['@attributes']['href'];
+					/* @var $typoScriptParser TypoScriptParser */
+					$typoScriptParser = GeneralUtility::makeInstance(TypoScriptParser::class);
+					$typoScriptParser->parse($this->feed->getCustomMapping());
 
-							break;
-						}
-					}
+					$customMappingConfiguration = $typoScriptParser->setup;
 
-                    $dateTime = \DateTime::createFromFormat(\DateTime::ATOM, $entry->published);
-
-					$parsedNews[] = array(
-						'amt_feedimporter_guid' => (string) $entry->id,
-						'datetime' => $dateTime === FALSE ? new \DateTime() : $dateTime,
-						'title' => (string) $entry->title,
-						'link' => $linkValue,
-						'author' => (string) $entry->author->name,
-						'author_email' => (string) $entry->author->email,
-						'teaser' => (string) $entry->summary,
-						'bodytext' => (string) $entry->content,
-					);
-
-					if ($this->feed->getCustomMapping() !== '') {
-						$thisParsedNews = &$parsedNews[count($parsedNews) - 1];
-						$thisParsedNews['customMapping'] = array();
-
-						/* @var $typoScriptParser \TYPO3\CMS\Core\TypoScript\Parser\TypoScriptParser */
-						$typoScriptParser = GeneralUtility::makeInstance(\TYPO3\CMS\Core\TypoScript\Parser\TypoScriptParser::class);
-						$typoScriptParser->parse($this->feed->getCustomMapping());
-
-						$customMappingConfiguration = $typoScriptParser->setup;
-
-						if (is_array($customMappingConfiguration)) {
-							foreach ($customMappingConfiguration as $key => $val) {
-								if (!is_array($val)) {
-                                    if ($key === FeedImportJobInterface::CLEAR_FIELD) {
-                                        $thisParsedNews['customMapping'][$val] = '';
-                                    } else {
-                                        $thisParsedNews['customMapping'][$val] = (string) $entry->{$key};
-                                    }
+					if (is_array($customMappingConfiguration)) {
+						foreach ($customMappingConfiguration as $key => $val) {
+							if (!is_array($val)) {
+								if ($key === FeedImportJobInterface::CLEAR_FIELD) {
+									$thisParsedNews['customMapping'][$val] = '';
 								} else {
-									foreach ($val as $k => $v) {
-										$joinedValues = array();
+									$thisParsedNews['customMapping'][$val] = (string) $entry->{$key};
+								}
+							} else {
+								foreach ($val as $k => $v) {
+									$joinedValues = array();
 
-										$childrens = $entry->children(str_replace('.', '', $key), TRUE)->{$k};
+									$childrens = $entry->children(str_replace('.', '', $key), TRUE)->{$k};
 
-										foreach ($childrens as $children) {
-											$joinedValues[] = (string) $children;
-										}
-
-										$thisParsedNews['customMapping'][$v] = implode(',', $joinedValues);
+									foreach ($childrens as $children) {
+										$joinedValues[] = (string) $children;
 									}
+
+									$thisParsedNews['customMapping'][$v] = implode(',', $joinedValues);
 								}
 							}
 						}
 					}
-
-					if (is_array($GLOBALS['TYPO3_CONF_VARS']['EXT']['amt_feed_importer']['Job/AtomImportJob.php']['extraMapping'])) {
-						$params = array(
-							'parsedNews' => &$parsedNews[count($parsedNews) - 1],
-							'item' => $entry,
-						);
-
-						foreach ($GLOBALS['TYPO3_CONF_VARS']['EXT']['amt_feed_importer']['Job/AtomImportJob.php']['extraMapping'] as $reference) {
-							GeneralUtility::callUserFunction($reference, $params, $this);
-						}
-					}
 				}
 
-				return $parsedNews;
+				if (is_array($GLOBALS['TYPO3_CONF_VARS']['EXT']['amt_feed_importer']['Job/AtomImportJob.php']['extraMapping'])) {
+					$params = array(
+						'parsedNews' => &$parsedNews[count($parsedNews) - 1],
+						'item' => $entry,
+					);
+
+					foreach ($GLOBALS['TYPO3_CONF_VARS']['EXT']['amt_feed_importer']['Job/AtomImportJob.php']['extraMapping'] as $reference) {
+						GeneralUtility::callUserFunction($reference, $params, $this);
+					}
+				}
 			}
+
+			return $parsedNews;	
 		}
 	}
 

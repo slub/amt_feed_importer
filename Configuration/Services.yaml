@@ -1,0 +1,26 @@
+services:
+  _defaults:
+    autowire: true
+    autoconfigure: true
+    public: false
+  
+  AMT\AmtFeedImporter\:
+    resource: '../Classes/*'
+    exclude: '../Classes/Domain/Model/*'
+
+  AMT\AmtFeedImporter\Service\FeedService:
+    public: true
+    arguments:
+      $feedRepository: '@AMT\AmtFeedImporter\Domain\Repository\FeedRepository'
+
+  AMT\AmtFeedImporter\Job\AtomImportJob:
+    public: true
+    arguments:
+      $feedRepository: '@AMT\AmtFeedImporter\Domain\Repository\FeedRepository'
+      $cacheService: '@TYPO3\CMS\Extbase\Service\CacheService'
+
+  AMT\AmtFeedImporter\Job\RSS2ImportJob:
+    public: true
+    arguments:
+      $feedRepository: '@AMT\AmtFeedImporter\Domain\Repository\FeedRepository'
+      $cacheService: '@TYPO3\CMS\Extbase\Service\CacheService'

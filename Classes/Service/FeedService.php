@@ -24,25 +24,32 @@
  *
  *  This copyright notice MUST APPEAR in all copies of the script!
  ***************************************************************/
+namespace AMT\AmtFeedImporter\Service;
 
-namespace AMT\AmtFeedImporter\Task;
+use AMT\AmtFeedImporter\Domain\Repository\FeedRepository;
 
-use TYPO3\CMS\Core\Utility\GeneralUtility;
-use TYPO3\CMS\Scheduler\Task\AbstractTask;
-use AMT\AmtFeedImporter\Job\AtomImportJob;
+/**
+ * Service class with dependency injection for tasks
+ */
+class FeedService {
 
-class AtomImportTask extends AbstractTask {
+    /**
+     * @var FeedRepository;
+     */
+    protected FeedRepository $feedRepository;
 
-	public $feedUid;
+    /**
+     * @return FeedRepository $feedRepository
+     */
+    public function getFeedRepository() {
+        return $this->feedRepository;
+    }
+
+    /**
+     * @param FeedRepository $feedRepository
+     */
+    public function __construct(FeedRepository $feedRepository) {
+        $this->feedRepository = $feedRepository;
+    }
 	
-	public function execute() {
-		/* @var $importJob AtomImportJob */
-		$importJob = GeneralUtility::makeInstance(AtomImportJob::class);
-		
-		return $importJob->run($this->feedUid);
-	}
-	
-	public function __toString() {
-		return 'AtomImportTask';
-	}
 }

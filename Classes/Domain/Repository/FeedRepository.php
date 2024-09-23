@@ -1,5 +1,4 @@
 <?php 
-namespace AMT\AmtFeedImporter\Domain\Repository;
 
 /***************************************************************
  *
@@ -26,10 +25,16 @@ namespace AMT\AmtFeedImporter\Domain\Repository;
  *  This copyright notice MUST APPEAR in all copies of the script!
  ***************************************************************/
 
-class FeedRepository extends \TYPO3\CMS\Extbase\Persistence\Repository {
+namespace AMT\AmtFeedImporter\Domain\Repository;
+
+use TYPO3\CMS\Core\Utility\GeneralUtility;
+use TYPO3\CMS\Extbase\Persistence\Repository;
+use TYPO3\CMS\Extbase\Persistence\Generic\Typo3QuerySettings;
+
+class FeedRepository extends Repository {
 	public function initializeObject() {
-		/* @var $querySettings \TYPO3\CMS\Extbase\Persistence\Generic\Typo3QuerySettings */
-		$querySettings = $this->objectManager->get('TYPO3\\CMS\\Extbase\\Persistence\\Generic\\Typo3QuerySettings');
+		/* @var $querySettings Typo3QuerySettings */
+		$querySettings = GeneralUtility::makeInstance(Typo3QuerySettings::class);
 		
 		$querySettings->setRespectStoragePage(FALSE);
 		
